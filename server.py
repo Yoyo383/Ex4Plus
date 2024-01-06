@@ -1,5 +1,12 @@
 import os
 import socket
+import logging
+
+
+LOG_FORMAT = '[%(levelname)s | %(asctime)s | %(processName)s] %(message)s'
+LOG_LEVEL = logging.DEBUG
+LOG_DIR = 'log'
+LOG_FILE = LOG_DIR + '/server.log'
 
 QUEUE_LEN = 10
 IP = '0.0.0.0'
@@ -45,8 +52,7 @@ def receive_http_request(client_socket):
     return [line[:-len(END_LINE)] for line in lines]
 
 
-def validate_request(client_socket):
-    request = receive_http_request(client_socket)
+def validate_request(request):
     request_line = request[0].split(' ')
     if len(request_line) != 3 or request_line[2] != HTTP_VERSION or request_line[0] not in VALID_VERBS:
         return False, ''
@@ -81,7 +87,10 @@ def build_header(key, value):
 
 
 def handle_client(client_socket):
-    is_valid, uri = validate_request(client_socket)
+    request = receive_http_request(client_socket)
+    is_valid, uri = validate_request(request)
+    logging.info(f'HTTP request valid: {is_valid}')
+    logging.info(f'Requested URI: {uri}')
     status_code = get_status_code(is_valid, uri)
     body = b''
 
@@ -103,6 +112,7 @@ def handle_client(client_socket):
     response += body
 
     send_response(client_socket, response)
+    logging.info(f'Sending client a response, status code: {status_code}')
 
 
 def main():
@@ -110,20 +120,30 @@ def main():
     try:
         server_socket.bind((IP, PORT))
         server_socket.listen(QUEUE_LEN)
+        logging.debug('Listening for connections...')
         while True:
             client_socket, client_addr = server_socket.accept()
             try:
+                logging.info(f'Connected to client at address {client_addr}')
                 client_socket.settimeout(SOCKET_TIMEOUT)
                 handle_client(client_socket)
             except socket.error as err:
                 print(f'client socket error: {str(err)}')
+                logging.error(f'Error at client socket: {str(err)}')
             finally:
                 client_socket.close()
+                logging.debug(f'Client at address {client_addr} disconnected.')
     except socket.error as err:
         print(f'server socket error: {str(err)}')
+        logging.error(f'Error at server socket: {str(err)}')
     finally:
         server_socket.close()
+        logging.debug('Server socket closed.')
 
 
 if __name__ == '__main__':
+    if not os.path.isdir(LOG_DIR):
+        os.mkdir(LOG_DIR)
+    logging.basicConfig(format=LOG_FORMAT, filename=LOG_FILE, level=LOG_LEVEL)
+
     main()
