@@ -1,3 +1,4 @@
+import os
 import socket
 
 QUEUE_LEN = 10
@@ -8,14 +9,16 @@ SOCKET_TIMEOUT = 2
 VALID_VERBS = ['GET']
 HTTP_VERSION = 'HTTP/1.1'
 WEB_ROOT = 'webroot'
-
-
-def build_response(status_code, body=None, content_type=None):
-    pass
-
-
-def process_request(uri):
-    pass
+SPECIAL_URIS = {'/moved': 302, '/forbidden': 403, '/error': 500}
+DEFAULT_PATH = '/index.html'
+STATUS_MSG = {
+    200: 'OK', 302: 'MOVED TEMPORARILY', 400: 'BAD REQUEST', 404: 'NOT FOUND',
+    500: 'INTERNAL SERVER ERROR', 403: 'FORBIDDEN'
+}
+TYPES = {
+    'html': 'text/html;charset=utf-8', 'jpg': 'image/jpeg', 'css': 'text/css', 'js': 'text/javascript;charset=utf-8',
+    'txt': 'text/plain', 'ico': 'image/x-icon', 'gif': 'image/jpeg', 'png': 'image/png'
+}
 
 
 def send_response(client_socket, response):
@@ -49,13 +52,50 @@ def validate_request(client_socket):
     return True, request_line[1]
 
 
+def get_file_path(uri):
+    if uri == '/' or uri == '':
+        return WEB_ROOT + DEFAULT_PATH
+    return WEB_ROOT + uri
+
+
+def get_status_code(is_valid, uri):
+    file_path = get_file_path(uri)
+    if not is_valid:
+        return 400
+    elif uri in SPECIAL_URIS.keys():
+        return SPECIAL_URIS[uri]
+    elif not os.path.isfile(file_path):
+        return 404
+    return 200
+
+
+def read_file(path):
+    with open(path, 'rb') as f:
+        data = f.read()
+    return data
+
+
+def build_header(key, value):
+    return f'{key}: {value}\r\n'.encode()
+
+
 def handle_client(client_socket):
     is_valid, uri = validate_request(client_socket)
-    if not is_valid:
-        response = build_response(400)
-    else:
-        status_code, body, content_type = process_request(uri)
-        response = build_response(status_code, body, content_type)
+    status_code = get_status_code(is_valid, uri)
+    body = b''
+
+    response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}\r\n'.encode()
+
+    if status_code == 302:
+        response += build_header('Location', '/')
+    elif status_code == 200:
+        file_path = get_file_path(uri)
+        body = read_file(file_path)
+        response += build_header('Content-Length', len(body))
+        response += build_header('Content-Type', TYPES[file_path.split('.')[-1]])
+
+    response += '\r\n'.encode()
+    response += body
 
     send_response(client_socket, response)
 
