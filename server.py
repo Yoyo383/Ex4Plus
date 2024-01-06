@@ -19,6 +19,7 @@ TYPES = {
     'html': 'text/html;charset=utf-8', 'jpg': 'image/jpeg', 'css': 'text/css', 'js': 'text/javascript;charset=utf-8',
     'txt': 'text/plain', 'ico': 'image/x-icon', 'gif': 'image/jpeg', 'png': 'image/png'
 }
+NOT_FOUND_FILE = 'not-found.html'
 
 
 def send_response(client_socket, response):
@@ -88,8 +89,12 @@ def handle_client(client_socket):
 
     if status_code == 302:
         response += build_header('Location', '/')
-    elif status_code == 200:
-        file_path = get_file_path(uri)
+    elif status_code == 200 or status_code == 404:
+        if status_code == 200:
+            file_path = get_file_path(uri)
+        else:
+            file_path = NOT_FOUND_FILE
+
         body = read_file(file_path)
         response += build_header('Content-Length', len(body))
         response += build_header('Content-Type', TYPES[file_path.split('.')[-1]])
