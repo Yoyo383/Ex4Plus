@@ -1,3 +1,8 @@
+"""
+Author: Yoad Winter
+Date: 6.1.2024
+Description: A very basic HTTP server.
+"""
 import os
 import socket
 import logging
@@ -30,12 +35,27 @@ NOT_FOUND_FILE = 'not-found.html'
 
 
 def send_response(client_socket, response):
+    """
+    Sends a response through the socket.
+    :param client_socket: The socket.
+    :type client_socket: socket.socket
+    :param response: The response to send.
+    :type response: bytes
+    :return: None.
+    """
     while response:
         size = client_socket.send(response)
         response = response[size:]
 
 
 def receive_line(client_socket):
+    """
+    Receive a single line of the request.
+    :param client_socket: The socket.
+    :type client_socket: socket.socket
+    :return: The line received.
+    :rtype: str
+    """
     data = ''
     while not data.endswith(END_LINE):
         data += client_socket.recv(1).decode()
@@ -43,6 +63,13 @@ def receive_line(client_socket):
 
 
 def receive_http_request(client_socket):
+    """
+    Receives the entire HTTP request.
+    :param client_socket: The socket.
+    :type client_socket: socket.socket
+    :return: The HTTP request as a list of its lines.
+    :rtype: list[str]
+    """
     current_line = ''
     lines = []
     while current_line != END_LINE:
@@ -53,6 +80,14 @@ def receive_http_request(client_socket):
 
 
 def validate_request(request):
+    """
+    Checks if the request is valid.
+    :param request: The HTTP request.
+    :type request: list[str]
+    :return: Whether the request is valid + the URI (if the request is not valid it returns an empty string).
+    :rtype: tuple[bool, str]
+    """
+    # splits the request line
     request_line = request[0].split(' ')
     if len(request_line) != 3 or request_line[2] != HTTP_VERSION or request_line[0] not in VALID_VERBS:
         return False, ''
@@ -60,12 +95,28 @@ def validate_request(request):
 
 
 def get_file_path(uri):
+    """
+    Returns the filepath for a URI.
+    :param uri: The URI.
+    :type uri: str
+    :return: The filepath for the URI.
+    :rtype: str
+    """
     if uri == '/' or uri == '':
         return WEB_ROOT + DEFAULT_PATH
     return WEB_ROOT + uri
 
 
 def get_status_code(is_valid, uri):
+    """
+    Returns the status code of the request.
+    :param is_valid: Is the request valid.
+    :type is_valid: bool
+    :param uri: The URI of the request.
+    :type uri: str
+    :return: The status code.
+    :rtype: int
+    """
     file_path = get_file_path(uri)
     if not is_valid:
         return 400
@@ -77,45 +128,72 @@ def get_status_code(is_valid, uri):
 
 
 def read_file(path):
+    """
+    Reads a file and returns its bytes.
+    :param path: The file path.
+    :type path: str
+    :return: The file's content as bytes.
+    :rtype: bytes
+    """
     with open(path, 'rb') as f:
         data = f.read()
     return data
 
 
 def build_header(key, value):
-    return f'{key}: {value}\r\n'.encode()
+    """
+    Returns a header built from a key and a value.
+    :param key: The key.
+    :type key: str
+    :param value: The value.
+    :type value: Any
+    :return: The header encoded.
+    :rtype: bytes
+    """
+    return f'{key}: {value}{END_LINE}'.encode()
 
 
 def handle_client(client_socket):
-    request = receive_http_request(client_socket)
-    is_valid, uri = validate_request(request)
-    logging.info(f'HTTP request valid: {is_valid}')
-    logging.info(f'Requested URI: {uri}')
-    status_code = get_status_code(is_valid, uri)
-    body = b''
+    """
+    Receives a request, processes it, and sends a response.
+    :param client_socket: The socket.
+    :type client_socket: socket.socket
+    :return: None.
+    """
+    while True:
+        request = receive_http_request(client_socket)
+        is_valid, uri = validate_request(request)
+        logging.info(f'HTTP request valid: {is_valid}')
+        logging.info(f'Requested URI: {uri}')
+        status_code = get_status_code(is_valid, uri)
+        body = b''
 
-    response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}\r\n'.encode()
+        response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
 
-    if status_code == 302:
-        response += build_header('Location', '/')
-    elif status_code == 200 or status_code == 404:
-        if status_code == 200:
-            file_path = get_file_path(uri)
-        else:
-            file_path = NOT_FOUND_FILE
+        if status_code == 302:
+            response += build_header('Location', '/')
+        elif status_code == 200 or status_code == 404:
+            if status_code == 200:
+                file_path = get_file_path(uri)
+            else:
+                file_path = NOT_FOUND_FILE
 
-        body = read_file(file_path)
-        response += build_header('Content-Length', len(body))
-        response += build_header('Content-Type', TYPES[file_path.split('.')[-1]])
+            body = read_file(file_path)
+            response += build_header('Content-Length', len(body))
+            response += build_header('Content-Type', TYPES[file_path.split('.')[-1]])
 
-    response += '\r\n'.encode()
-    response += body
+        response += END_LINE.encode()
+        response += body
 
-    send_response(client_socket, response)
-    logging.info(f'Sending client a response, status code: {status_code}')
+        send_response(client_socket, response)
+        logging.info(f'Sending client a response, status code: {status_code}')
 
 
 def main():
+    """
+    The main function.
+    :return: None.
+    """
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         server_socket.bind((IP, PORT))
