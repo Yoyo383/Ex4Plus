@@ -220,6 +220,13 @@ def main():
 
 
 if __name__ == '__main__':
+    assert validate_request(['GET / HTTP/1.1'])[0]
+    assert validate_request(['GET /index.html HTTP/1.1'])[0]
+    assert validate_request(['GET /moved HTTP/1.1'])[0]
+    assert not validate_request(['GET HTTP/1.1'])[0]
+    assert not validate_request(['HAHA / HTTP/1.1'])[0]
+    assert not validate_request(['GET / HELLO-THERE/GENERAL-KENOBI'])[0]
+
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
     logging.basicConfig(format=LOG_FORMAT, filename=LOG_FILE, level=LOG_LEVEL)
