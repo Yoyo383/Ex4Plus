@@ -28,8 +28,9 @@ STATUS_MSG = {
     500: 'INTERNAL SERVER ERROR', 403: 'FORBIDDEN'
 }
 TYPES = {
-    'html': 'text/html;charset=utf-8', 'jpg': 'image/jpeg', 'css': 'text/css', 'js': 'text/javascript;charset=utf-8',
-    'txt': 'text/plain', 'ico': 'image/x-icon', 'gif': 'image/jpeg', 'png': 'image/png'
+    '.html': 'text/html;charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.css': 'text/css',
+    '.js': 'text/javascript;charset=utf-8', '.txt': 'text/plain', '.ico': 'image/x-icon', '.gif': 'image/jpeg',
+    '.png': 'image/png'
 }
 NOT_FOUND_FILE = 'not-found.html'
 
@@ -179,8 +180,9 @@ def handle_client(client_socket):
                 file_path = NOT_FOUND_FILE
 
             body = read_file(file_path)
+            name, ext = os.path.splitext(file_path)
             response += build_header('Content-Length', len(body))
-            response += build_header('Content-Type', TYPES[file_path.split('.')[-1]])
+            response += build_header('Content-Type', TYPES[ext])
 
         response += END_LINE.encode()
         response += body
