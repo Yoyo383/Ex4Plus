@@ -222,12 +222,12 @@ def main():
 
 
 if __name__ == '__main__':
-    assert validate_request(['GET / HTTP/1.1'])[0]
-    assert validate_request(['GET /index.html HTTP/1.1'])[0]
-    assert validate_request(['GET /moved HTTP/1.1'])[0]
-    assert not validate_request(['GET HTTP/1.1'])[0]
-    assert not validate_request(['HAHA / HTTP/1.1'])[0]
-    assert not validate_request(['GET / HELLO-THERE/GENERAL-KENOBI'])[0]
+    assert validate_request(['GET / HTTP/1.1']) == (True, '/')
+    assert validate_request(['GET /index.html HTTP/1.1']) == (True, '/index.html')
+    assert validate_request(['GET /moved HTTP/1.1']) == (True, '/moved')
+    assert validate_request(['GET HTTP/1.1']) == (False, '')
+    assert validate_request(['HAHA / HTTP/1.1']) == (False, '')
+    assert validate_request(['GET / HELLO-THERE/GENERAL-KENOBI']) == (False, '')
 
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
