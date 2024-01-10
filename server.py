@@ -161,34 +161,33 @@ def handle_client(client_socket):
     :type client_socket: socket.socket
     :return: None.
     """
-    while True:
-        request = receive_http_request(client_socket)
-        is_valid, uri = validate_request(request)
-        logging.info(f'HTTP request valid: {is_valid}')
-        logging.info(f'Requested URI: {uri}')
-        status_code = get_status_code(is_valid, uri)
-        body = b''
+    request = receive_http_request(client_socket)
+    is_valid, uri = validate_request(request)
+    logging.info(f'HTTP request valid: {is_valid}')
+    logging.info(f'Requested URI: {uri}')
+    status_code = get_status_code(is_valid, uri)
+    body = b''
 
-        response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
+    response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
 
-        if status_code == 302:
-            response += build_header('Location', '/')
-        elif status_code == 200 or status_code == 404:
-            if status_code == 200:
-                file_path = get_file_path(uri)
-            else:
-                file_path = NOT_FOUND_FILE
+    if status_code == 302:
+        response += build_header('Location', '/')
+    elif status_code == 200 or status_code == 404:
+        if status_code == 200:
+            file_path = get_file_path(uri)
+        else:
+            file_path = NOT_FOUND_FILE
 
-            body = read_file(file_path)
-            name, ext = os.path.splitext(file_path)
-            response += build_header('Content-Length', len(body))
-            response += build_header('Content-Type', TYPES[ext])
+        body = read_file(file_path)
+        name, ext = os.path.splitext(file_path)
+        response += build_header('Content-Length', len(body))
+        response += build_header('Content-Type', TYPES[ext])
 
-        response += END_LINE.encode()
-        response += body
+    response += END_LINE.encode()
+    response += body
 
-        send_response(client_socket, response)
-        logging.info(f'Sending client a response, status code: {status_code}')
+    send_response(client_socket, response)
+    logging.info(f'Sending client a response, status code: {status_code}')
 
 
 def main():
