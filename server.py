@@ -219,6 +219,22 @@ def handle_client(client_socket):
         response = f'{HTTP_VERSION} 200 OK\r\n\r\n'.encode()
         send_response(client_socket, response)
         return
+    elif uri == '/image':
+        file_name = 'upload/' + params['image-name']
+        if os.path.isfile(file_name):
+            status_code = 200
+        else:
+            status_code = 404
+        response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
+        if status_code == 200:
+            body = read_file(file_name)
+            name, ext = os.path.splitext(file_name)
+            response += build_header('Content-Length', len(body))
+            response += build_header('Content-Type', TYPES[ext])
+            response += END_LINE.encode()
+            response += body
+        send_response(client_socket, response)
+        return
 
     status_code = get_status_code(is_valid, uri)
     body = b''
