@@ -17,6 +17,9 @@ QUEUE_LEN = 10
 IP = '0.0.0.0'
 PORT = 80
 END_LINE = '\r\n'
+PARAMETER_SEP = '&'
+KEY_VALUE_SEPERATOR = '='
+PARAMETER_BEGIN = '?'
 SOCKET_TIMEOUT = 2
 VALID_VERBS = ['GET']
 HTTP_VERSION = 'HTTP/1.1'
@@ -85,14 +88,25 @@ def validate_request(request):
     Checks if the request is valid.
     :param request: The HTTP request.
     :type request: list[str]
-    :return: Whether the request is valid + the URI (if the request is not valid it returns an empty string).
-    :rtype: tuple[bool, str]
+    :return: Whether the request is valid, the URI (if the request is not valid it returns an empty string), and the
+    parameters as a dict.
+    :rtype: tuple[bool, str, dict[str, str]]
     """
     # splits the request line
     request_line = request[0].split(' ')
     if len(request_line) != 3 or request_line[2] != HTTP_VERSION or request_line[0] not in VALID_VERBS:
-        return False, ''
-    return True, request_line[1]
+        return False, None, None
+
+    params = {}
+    uri_params_list = request_line[1].split(PARAMETER_BEGIN)
+    uri = uri_params_list[0]
+    if len(uri_params_list) == 2:
+        params_list = uri_params_list[1].split(PARAMETER_BEGIN)[-1].split(PARAMETER_SEP)
+        for param in params_list:
+            key, value = param.split(KEY_VALUE_SEPERATOR)
+            params[key] = value
+
+    return True, uri, params
 
 
 def get_file_path(uri):
@@ -162,9 +176,23 @@ def handle_client(client_socket):
     :return: None.
     """
     request = receive_http_request(client_socket)
-    is_valid, uri = validate_request(request)
+    is_valid, uri, params = validate_request(request)
     logging.info(f'HTTP request valid: {is_valid}')
     logging.info(f'Requested URI: {uri}')
+
+    if uri == '/calculate-next':
+        num = str(int(params['num']) + 1)
+        response = f'HTTP/1.1 200 OK\r\nContent-Length: {len(num)}\r\nContent-Type: text/plain\r\n\r\n{num}'.encode()
+        send_response(client_socket, response)
+        return
+    elif uri == '/calculate-area':
+        width = int(params['width'])
+        height = int(params['height'])
+        area = str(width * height / 2)
+        response = f'HTTP/1.1 200 OK\r\nContent-Length: {len(area)}\r\nContent-Type: text/plain\r\n\r\n{area}'.encode()
+        send_response(client_socket, response)
+        return
+
     status_code = get_status_code(is_valid, uri)
     body = b''
 
@@ -221,12 +249,12 @@ def main():
 
 
 if __name__ == '__main__':
-    assert validate_request(['GET / HTTP/1.1']) == (True, '/')
-    assert validate_request(['GET /index.html HTTP/1.1']) == (True, '/index.html')
-    assert validate_request(['GET /moved HTTP/1.1']) == (True, '/moved')
-    assert validate_request(['GET HTTP/1.1']) == (False, '')
-    assert validate_request(['HAHA / HTTP/1.1']) == (False, '')
-    assert validate_request(['GET / HELLO-THERE/GENERAL-KENOBI']) == (False, '')
+    assert validate_request(['GET / HTTP/1.1']) == (True, '/', {})
+    assert validate_request(['GET /index.html HTTP/1.1']) == (True, '/index.html', {})
+    assert validate_request(['GET /moved HTTP/1.1']) == (True, '/moved', {})
+    assert validate_request(['GET HTTP/1.1']) == (False, None, None)
+    assert validate_request(['HAHA / HTTP/1.1']) == (False, None, None)
+    assert validate_request(['GET / HELLO-THERE/GENERAL-KENOBI']) == (False, None, None)
 
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
