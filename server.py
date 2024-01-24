@@ -17,11 +17,12 @@ QUEUE_LEN = 10
 IP = '0.0.0.0'
 PORT = 80
 END_LINE = '\r\n'
+HEADER_KEY_VALUE_SEP = ': '
 PARAMETER_SEP = '&'
-KEY_VALUE_SEPERATOR = '='
+PARAM_KEY_VALUE_SEP = '='
 PARAMETER_BEGIN = '?'
 SOCKET_TIMEOUT = 2
-VALID_VERBS = ['GET']
+VALID_VERBS = ['GET', 'POST']
 HTTP_VERSION = 'HTTP/1.1'
 WEB_ROOT = 'webroot'
 SPECIAL_URIS = {'/moved': 302, '/forbidden': 403, '/error': 500}
@@ -36,6 +37,7 @@ TYPES = {
     '.png': 'image/png'
 }
 NOT_FOUND_FILE = 'not-found.html'
+UPLOAD_DIR = 'upload'
 
 
 def send_response(client_socket, response):
@@ -66,6 +68,19 @@ def receive_line(client_socket):
     return data
 
 
+def parse_headers(lines):
+    """
+
+    :type lines: list[str]
+    :return:
+    """
+    headers = {}
+    for line in lines[1:-1]:
+        key, value = line.split(HEADER_KEY_VALUE_SEP)
+        headers[key.lower()] = value
+    return headers
+
+
 def receive_http_request(client_socket):
     """
     Receives the entire HTTP request.
@@ -80,7 +95,13 @@ def receive_http_request(client_socket):
         current_line = receive_line(client_socket)
         lines.append(current_line)
     # remove \r\n from the final result
-    return [line[:-len(END_LINE)] for line in lines]
+    lines = [line[:-len(END_LINE)] for line in lines]
+    headers = parse_headers(lines)
+    body, body_type = None, None
+    if 'content-length' in headers.keys() and 'content-type' in headers.keys():
+        body = client_socket.recv(int(headers['content-length']))
+        body_type = headers['content-type']
+    return lines, body, body_type
 
 
 def validate_request(request):
@@ -103,7 +124,7 @@ def validate_request(request):
     if len(uri_params_list) == 2:
         params_list = uri_params_list[1].split(PARAMETER_BEGIN)[-1].split(PARAMETER_SEP)
         for param in params_list:
-            key, value = param.split(KEY_VALUE_SEPERATOR)
+            key, value = param.split(PARAM_KEY_VALUE_SEP)
             params[key] = value
 
     return True, uri, params
@@ -175,21 +196,27 @@ def handle_client(client_socket):
     :type client_socket: socket.socket
     :return: None.
     """
-    request = receive_http_request(client_socket)
+    request, body, body_type = receive_http_request(client_socket)
     is_valid, uri, params = validate_request(request)
     logging.info(f'HTTP request valid: {is_valid}')
     logging.info(f'Requested URI: {uri}')
 
     if uri == '/calculate-next':
         num = str(int(params['num']) + 1)
-        response = f'HTTP/1.1 200 OK\r\nContent-Length: {len(num)}\r\nContent-Type: text/plain\r\n\r\n{num}'.encode()
+        response = f'{HTTP_VERSION} 200 OK\r\nContent-Length: {len(num)}\r\nContent-Type: text/plain\r\n\r\n{num}'.encode()
         send_response(client_socket, response)
         return
     elif uri == '/calculate-area':
         width = int(params['width'])
         height = int(params['height'])
         area = str(width * height / 2)
-        response = f'HTTP/1.1 200 OK\r\nContent-Length: {len(area)}\r\nContent-Type: text/plain\r\n\r\n{area}'.encode()
+        response = f'{HTTP_VERSION} 200 OK\r\nContent-Length: {len(area)}\r\nContent-Type: text/plain\r\n\r\n{area}'.encode()
+        send_response(client_socket, response)
+        return
+    elif uri == '/upload':
+        with open(f'{UPLOAD_DIR}/{params['file-name']}', 'wb') as f:
+            f.write(body)
+        response = f'{HTTP_VERSION} 200 OK\r\n\r\n'.encode()
         send_response(client_socket, response)
         return
 
@@ -256,6 +283,8 @@ if __name__ == '__main__':
     assert validate_request(['HAHA / HTTP/1.1']) == (False, None, None)
     assert validate_request(['GET / HELLO-THERE/GENERAL-KENOBI']) == (False, None, None)
 
+    if not os.path.isdir(UPLOAD_DIR):
+        os.mkdir(UPLOAD_DIR)
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
     logging.basicConfig(format=LOG_FORMAT, filename=LOG_FILE, level=LOG_LEVEL)
