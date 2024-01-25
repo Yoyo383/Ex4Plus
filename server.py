@@ -1,43 +1,19 @@
 """
 Author: Yoad Winter
-Date: 6.1.2024
+Date: 25.1.2024
 Description: A very basic HTTP server.
 """
 import os
 import socket
 import logging
+import server_funcs
+from globals import *
 
 
 LOG_FORMAT = '[%(levelname)s | %(asctime)s | %(processName)s] %(message)s'
 LOG_LEVEL = logging.DEBUG
 LOG_DIR = 'log'
 LOG_FILE = LOG_DIR + '/server.log'
-
-QUEUE_LEN = 10
-IP = '0.0.0.0'
-PORT = 80
-END_LINE = '\r\n'
-HEADER_KEY_VALUE_SEP = ': '
-PARAMETER_SEP = '&'
-PARAM_KEY_VALUE_SEP = '='
-PARAMETER_BEGIN = '?'
-SOCKET_TIMEOUT = 2
-VALID_VERBS = ['GET', 'POST']
-HTTP_VERSION = 'HTTP/1.1'
-WEB_ROOT = 'webroot'
-SPECIAL_URIS = {'/moved': 302, '/forbidden': 403, '/error': 500}
-DEFAULT_PATH = '/index.html'
-STATUS_MSG = {
-    200: 'OK', 302: 'MOVED TEMPORARILY', 400: 'BAD REQUEST', 404: 'NOT FOUND',
-    500: 'INTERNAL SERVER ERROR', 403: 'FORBIDDEN'
-}
-TYPES = {
-    '.html': 'text/html;charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.css': 'text/css',
-    '.js': 'text/javascript;charset=utf-8', '.txt': 'text/plain', '.ico': 'image/x-icon', '.gif': 'image/jpeg',
-    '.png': 'image/png'
-}
-NOT_FOUND_FILE = 'not-found.html'
-UPLOAD_DIR = 'upload'
 
 
 def send_response(client_socket, response):
@@ -70,9 +46,11 @@ def receive_line(client_socket):
 
 def parse_headers(lines):
     """
-
+    Takes a request and returns its headers as a dict.
+    :param lines: The request as lines.
     :type lines: list[str]
-    :return:
+    :return: The headers.
+    :rtype: dict[str, str]
     """
     headers = {}
     for line in lines[1:-1]:
@@ -86,8 +64,8 @@ def receive_http_request(client_socket):
     Receives the entire HTTP request.
     :param client_socket: The socket.
     :type client_socket: socket.socket
-    :return: The HTTP request as a list of its lines.
-    :rtype: list[str]
+    :return: The HTTP request as a list of its lines, the body, and the body type.
+    :rtype: tuple[list[str], bytes, str]
     """
     current_line = ''
     lines = []
@@ -163,19 +141,6 @@ def get_status_code(is_valid, uri):
     return 200
 
 
-def read_file(path):
-    """
-    Reads a file and returns its bytes.
-    :param path: The file path.
-    :type path: str
-    :return: The file's content as bytes.
-    :rtype: bytes
-    """
-    with open(path, 'rb') as f:
-        data = f.read()
-    return data
-
-
 def build_header(key, value):
     """
     Returns a header built from a key and a value.
@@ -189,6 +154,32 @@ def build_header(key, value):
     return f'{key}: {value}{END_LINE}'.encode()
 
 
+def build_response(status_code, body=None, body_type=None, location=None):
+    """
+    Takes a status code, body, body type and location and builds an HTTP response.
+    :param status_code: The status code.
+    :type status_code: int
+    :param body: The body of the response.
+    :type body: bytes | None
+    :param body_type: The type of the body.
+    :type body_type: str | None
+    :param location: The target location (if needed).
+    :type location: str | None
+    :return: The HTTP response.
+    :rtype: bytes
+    """
+    response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
+    if location:
+        response += build_header('Location', location)
+    if body:
+        response += build_header('Content-Length', len(body))
+        response += build_header('Content-Type', body_type)
+    response += END_LINE.encode()
+    if body:
+        response += body
+    return response
+
+
 def handle_client(client_socket):
     """
     Receives a request, processes it, and sends a response.
@@ -196,69 +187,53 @@ def handle_client(client_socket):
     :type client_socket: socket.socket
     :return: None.
     """
-    request, body, body_type = receive_http_request(client_socket)
-    is_valid, uri, params = validate_request(request)
-    logging.info(f'HTTP request valid: {is_valid}')
-    logging.info(f'Requested URI: {uri}')
+    response = b''
+    status_code = 0
+    try:
+        request, body, body_type = receive_http_request(client_socket)
+        is_valid, uri, params = validate_request(request)
+        logging.info(f'HTTP request valid: {is_valid}')
+        logging.info(f'Requested URI: {uri}')
+        logging.info(f'Query parameters: {params}')
 
-    if uri == '/calculate-next':
-        num = str(int(params['num']) + 1)
-        response = f'{HTTP_VERSION} 200 OK\r\nContent-Length: {len(num)}\r\nContent-Type: text/plain\r\n\r\n{num}'.encode()
-        send_response(client_socket, response)
-        return
-    elif uri == '/calculate-area':
-        width = int(params['width'])
-        height = int(params['height'])
-        area = str(width * height / 2)
-        response = f'{HTTP_VERSION} 200 OK\r\nContent-Length: {len(area)}\r\nContent-Type: text/plain\r\n\r\n{area}'.encode()
-        send_response(client_socket, response)
-        return
-    elif uri == '/upload':
-        with open(f'{UPLOAD_DIR}/{params['file-name']}', 'wb') as f:
-            f.write(body)
-        response = f'{HTTP_VERSION} 200 OK\r\n\r\n'.encode()
-        send_response(client_socket, response)
-        return
-    elif uri == '/image':
-        file_name = 'upload/' + params['image-name']
-        if os.path.isfile(file_name):
-            status_code = 200
+        if uri in SPECIAL_FUNCS_URIS.keys():
+            if set(params.keys()) == set(SPECIAL_FUNCS_URIS[uri]):
+                # yay getattr my favorite function
+                special_func = getattr(server_funcs, f'func_{uri[1:].replace('-', '_')}')
+                status_code, res_body, res_body_type = special_func(params, body)
+                response = build_response(status_code, res_body, res_body_type)
+            else:
+                response = build_response(400)
         else:
-            status_code = 404
-        response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
-        if status_code == 200:
-            body = read_file(file_name)
-            name, ext = os.path.splitext(file_name)
-            response += build_header('Content-Length', len(body))
-            response += build_header('Content-Type', TYPES[ext])
-            response += END_LINE.encode()
-            response += body
+            status_code = get_status_code(is_valid, uri)
+            res_body = b''
+            location = None
+            res_body_type = None
+
+            if status_code == 302:
+                location = '/'
+            elif status_code == 200 or status_code == 404:
+                if status_code == 200:
+                    file_path = get_file_path(uri)
+                else:
+                    file_path = NOT_FOUND_FILE
+
+                res_body = read_file(file_path)
+                name, ext = os.path.splitext(file_path)
+                res_body_type = TYPES[ext]
+
+            response = build_response(status_code, res_body, res_body_type, location)
+
+    except socket.error as err:
+        status_code = 500
+        response = build_response(status_code)
+        print(f'client socket error: {str(err)}')
+        logging.error(f'Error at client socket: {str(err)}')
+
+    finally:
         send_response(client_socket, response)
-        return
-
-    status_code = get_status_code(is_valid, uri)
-    body = b''
-
-    response = f'{HTTP_VERSION} {status_code} {STATUS_MSG[status_code]}{END_LINE}'.encode()
-
-    if status_code == 302:
-        response += build_header('Location', '/')
-    elif status_code == 200 or status_code == 404:
-        if status_code == 200:
-            file_path = get_file_path(uri)
-        else:
-            file_path = NOT_FOUND_FILE
-
-        body = read_file(file_path)
-        name, ext = os.path.splitext(file_path)
-        response += build_header('Content-Length', len(body))
-        response += build_header('Content-Type', TYPES[ext])
-
-    response += END_LINE.encode()
-    response += body
-
-    send_response(client_socket, response)
-    logging.info(f'Sending client a response, status code: {status_code}')
+        logging.info(f'Sending client a response, status code: {status_code}')
+        client_socket.close()
 
 
 def main():
@@ -273,16 +248,11 @@ def main():
         logging.debug('Listening for connections...')
         while True:
             client_socket, client_addr = server_socket.accept()
-            try:
-                logging.info(f'Connected to client at address {client_addr}')
-                client_socket.settimeout(SOCKET_TIMEOUT)
-                handle_client(client_socket)
-            except socket.error as err:
-                print(f'client socket error: {str(err)}')
-                logging.error(f'Error at client socket: {str(err)}')
-            finally:
-                client_socket.close()
-                logging.debug(f'Client at address {client_addr} disconnected.')
+            logging.info(f'Connected to client at address {client_addr}')
+            client_socket.settimeout(SOCKET_TIMEOUT)
+            # try/except is in handle_client()
+            handle_client(client_socket)
+            logging.debug(f'Client at address {client_addr} disconnected.')
     except socket.error as err:
         print(f'server socket error: {str(err)}')
         logging.error(f'Error at server socket: {str(err)}')
