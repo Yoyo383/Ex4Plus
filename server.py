@@ -198,8 +198,9 @@ def handle_client(client_socket):
 
         if uri in SPECIAL_FUNCS_URIS.keys():
             if set(params.keys()) == set(SPECIAL_FUNCS_URIS[uri]):
-                # yay getattr my favorite function
+                # yay getattr() my favorite function
                 special_func = getattr(server_funcs, f'func_{uri[1:].replace('-', '_')}')
+                # special_func() returns a status code, a body, and a body type no matter what function it is
                 status_code, res_body, res_body_type = special_func(params, body)
                 response = build_response(status_code, res_body, res_body_type)
             else:
@@ -268,6 +269,12 @@ if __name__ == '__main__':
     assert validate_request(['GET HTTP/1.1']) == (False, None, None)
     assert validate_request(['HAHA / HTTP/1.1']) == (False, None, None)
     assert validate_request(['GET / HELLO-THERE/GENERAL-KENOBI']) == (False, None, None)
+    assert (validate_request(['POST /haha?hello=there&general=kenobi HTTP/1.1'])
+            == (True, '/haha', {'hello': 'there', 'general': 'kenobi'}))
+    assert build_response(400) == b'HTTP/1.1 400 BAD REQUEST\r\n\r\n'
+    assert (build_response(200, b'8', 'text/plain')
+            == b'HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Type: text/plain\r\n\r\n8')
+    assert build_response(302, location='/') == b'HTTP/1.1 302 MOVED TEMPORARILY\r\nLocation: /\r\n\r\n'
 
     if not os.path.isdir(UPLOAD_DIR):
         os.mkdir(UPLOAD_DIR)
