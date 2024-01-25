@@ -67,7 +67,7 @@ def func_upload(params, body):
 
 def func_image(params, body):
     """
-    Returns an image in the 'public' dir from a name.
+    Returns an image in the 'upload' dir from a name.
     :param params: Query parameters.
     :type params: dict[str, str]
     :param body: HTTP request body.
