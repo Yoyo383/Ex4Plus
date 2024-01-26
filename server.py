@@ -271,10 +271,16 @@ if __name__ == '__main__':
     assert validate_request(['GET / HELLO-THERE/GENERAL-KENOBI']) == (False, None, None)
     assert (validate_request(['POST /haha?hello=there&general=kenobi HTTP/1.1'])
             == (True, '/haha', {'hello': 'there', 'general': 'kenobi'}))
+
     assert build_response(400) == b'HTTP/1.1 400 BAD REQUEST\r\n\r\n'
     assert (build_response(200, b'8', 'text/plain')
             == b'HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Type: text/plain\r\n\r\n8')
     assert build_response(302, location='/') == b'HTTP/1.1 302 MOVED TEMPORARILY\r\nLocation: /\r\n\r\n'
+
+    assert server_funcs.func_calculate_area({'width': '4', 'height': '6'}, b'') == (200, b'12.0', 'text/plain')
+    assert server_funcs.func_calculate_area({'width': 'he', 'height': '6'}, b'') == (400, None, None)
+    assert server_funcs.func_calculate_next({'num': '90'}, b'') == (200, b'91', 'text/plain')
+    assert server_funcs.func_calculate_next({'num': 'haha'}, b'') == (400, None, None)
 
     if not os.path.isdir(UPLOAD_DIR):
         os.mkdir(UPLOAD_DIR)
